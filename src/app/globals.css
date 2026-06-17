@@ -7,35 +7,48 @@
 
 @layer base {
   :root {
-    /* Color Palette - Urssaf Institutional Identity (High Contrast Light Theme) */
-    --bg-main: #f0f4f8; /* Soft soothing blue-gray background */
-    --bg-gradient: radial-gradient(circle at 0% 0%, #ebf1f6 0%, #e2eaf0 100%);
+    /* Color Palette - Refined institutional light theme (premium, restrained) */
+    --bg-main: #eef1f6; /* Calm neutral blue-gray background */
+    --bg-gradient: linear-gradient(180deg, #f4f6fa 0%, #e9edf3 100%);
     --bg-panel: #ffffff; /* Crisp white card bodies */
-    
-    /* Institutional Blues & High Contrast Slates */
-    --urssaf-blue-primary: #0033a0; /* Royal Blue (Official Brand Color - high contrast) */
-    --urssaf-blue-hover: #00227a;
-    --urssaf-blue-light: #e6edf8;
-    --urssaf-blue-light-border: #ccdcf2;
-    
+    --bg-subtle: #f7f9fc; /* Warm-neutral inset surface */
+
+    /* Institutional Blues & High Contrast Slates (deeper, calmer navy) */
+    --urssaf-blue-primary: #0a3a85; /* Deep institutional navy-blue */
+    --urssaf-blue-hover: #072b66;
+    --urssaf-blue-deep: #062252;
+    --urssaf-blue-light: #eaf0f9;
+    --urssaf-blue-light-border: #d4e0f1;
+
+    /* Refined neutral border ramp */
+    --border-color: #e3e8ef;
+    --border-strong: #cdd5e0;
+
     /* Text Colors - WCAG AA/AAA Compliant (> 4.5:1 and 7:1) */
-    --text-primary: #0a1128;   /* Deep Navy - ultra high contrast on white (18.5:1 contrast) */
-    --text-secondary: #334155; /* Dark Slate - high contrast on white (7.2:1 contrast) */
-    --text-muted: #475569;     /* Slate Gray - safe contrast on white (4.8:1 contrast) */
-    
-    /* Semantic Colors - High Contrast */
-    --accent-success: #15803d; /* Forest Green - 50% Credit d'impôt (Safe 5.1:1 on white) */
-    --accent-success-light: #ecfdf5;
-    --accent-warning: #b45309; /* Dark Amber - warnings / notifications */
-    --accent-danger: #be123c;  /* Deep Crimson - legal floor warnings */
-    --accent-info: #0369a1;    /* Vibrant Blue */
-    
+    --text-primary: #111827;   /* Deep ink - ultra high contrast on white */
+    --text-secondary: #3a4658; /* Dark slate - high contrast on white */
+    --text-muted: #647084;     /* Muted slate - safe contrast on white */
+
+    /* Semantic Colors - muted, premium */
+    --accent-success: #157347; /* Restrained forest green - crédit d'impôt */
+    --accent-success-light: #eef6f1;
+    --accent-warning: #9a5b0a; /* Muted amber */
+    --accent-danger: #a8243f;  /* Muted crimson */
+    --accent-info: #0a5a8f;    /* Calm blue */
+    --accent-gold: #9a7b32;    /* Subtle premium gold accent */
+
     /* Layout Constants */
-    --border-radius-sm: 8px;
+    --border-radius-sm: 10px;
     --border-radius-md: 16px;
-    --border-radius-lg: 24px;
-    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    
+    --border-radius-lg: 22px;
+    --transition-smooth: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Layered premium shadow tokens */
+    --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+    --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+    --shadow-md: 0 6px 16px -4px rgba(16, 24, 40, 0.08), 0 2px 6px -2px rgba(16, 24, 40, 0.05);
+    --shadow-lg: 0 18px 40px -12px rgba(10, 58, 133, 0.18), 0 6px 14px -6px rgba(16, 24, 40, 0.08);
+
     /* Accessible Typography */
     --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
     --font-body: 'Plus Jakarta Sans', sans-serif;
@@ -74,7 +87,7 @@
   :focus-visible {
     outline: 3px solid var(--urssaf-blue-primary) !important;
     outline-offset: 3px !important;
-    box-shadow: 0 0 0 3px rgba(0, 51, 160, 0.4) !important;
+    box-shadow: 0 0 0 3px rgba(10, 58, 133, 0.35) !important;
   }
 
   /* Custom Clean Accessible Scrollbar */
@@ -107,14 +120,25 @@
     width: 100%;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 24px 32px;
+    padding: 22px 32px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     position: relative;
-    border-bottom: 1px solid #cbd5e1;
+    border-bottom: 1px solid var(--border-color);
     background: #ffffff;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-xs);
+  }
+
+  /* Thin premium accent rule along the top of the header */
+  .header-container::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--urssaf-blue-deep) 0%, var(--urssaf-blue-primary) 55%, var(--accent-gold) 100%);
   }
 
   .brand-logo {
@@ -122,8 +146,8 @@
     align-items: center;
     gap: 12px;
     font-family: var(--font-heading);
-    font-weight: 800;
-    font-size: 1.6rem;
+    font-weight: 700;
+    font-size: 1.5rem;
     color: var(--urssaf-blue-primary);
     text-decoration: none;
     letter-spacing: -0.02em;
@@ -137,14 +161,14 @@
   .brand-badge {
     font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    background: var(--accent-success-light);
-    color: var(--accent-success);
-    border: 1px solid rgba(21, 128, 61, 0.2);
-    padding: 4px 10px;
-    border-radius: 50px;
+    letter-spacing: 0.08em;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    padding: 5px 12px;
+    border-radius: 6px;
     display: inline-block;
   }
 
@@ -196,23 +220,24 @@
   /* Professional Card Panels */
   .glass-panel {
     background: var(--bg-panel);
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius-md);
     padding: 32px;
-    box-shadow: 0 4px 20px rgba(10, 17, 40, 0.04);
+    box-shadow: var(--shadow-sm);
     transition: var(--transition-smooth);
     position: relative;
   }
 
   .glass-panel:hover {
-    box-shadow: 0 10px 30px rgba(10, 17, 40, 0.08);
-    border-color: #94a3b8;
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-strong);
   }
 
   .panel-title {
     font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 1.45rem;
+    font-size: 1.35rem;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
     margin-bottom: 24px;
     display: flex;
@@ -231,10 +256,10 @@
   /* Accessible Tab Controls (Large tap targets) */
   .tab-group {
     display: flex;
-    background: #f1f5f9;
-    padding: 6px;
+    background: var(--bg-subtle);
+    padding: 5px;
     border-radius: var(--border-radius-sm);
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-color);
     margin-bottom: 28px;
   }
 
@@ -265,7 +290,7 @@
   .tab-btn.active {
     color: #ffffff;
     background: var(--urssaf-blue-primary);
-    box-shadow: 0 4px 12px rgba(0, 51, 160, 0.25);
+    box-shadow: 0 4px 12px -2px rgba(10, 58, 133, 0.3);
   }
 
   /* Form Layout Group */
@@ -289,8 +314,8 @@
 
   .value-badge {
     font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 1.1rem;
+    font-weight: 600;
+    font-size: 1.05rem;
     color: var(--urssaf-blue-primary);
     background: var(--urssaf-blue-light);
     border: 1px solid var(--urssaf-blue-light-border);
@@ -319,8 +344,8 @@
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 8px; /* Slightly thicker for tactile feel */
-    background: #cbd5e1;
+    height: 6px; /* Refined slimmer track */
+    background: #d7dde6;
     border-radius: 6px;
     outline: none;
     transition: background 0.3s;
@@ -329,12 +354,12 @@
   .input-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 26px; /* Larger than 44px click target bounding box */
-    height: 26px;
+    width: 24px; /* Larger than 44px click target bounding box */
+    height: 24px;
     border-radius: 50%;
     background: #ffffff;
     border: 4px solid var(--urssaf-blue-primary);
-    box-shadow: 0 2px 8px rgba(0, 51, 160, 0.25);
+    box-shadow: 0 2px 8px -1px rgba(10, 58, 133, 0.3);
     cursor: pointer;
     transition: transform 0.1s;
   }
@@ -355,8 +380,8 @@
   /* Accessible Large Input Fields */
   .numeric-input-field {
     width: 100%;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-strong);
     border-radius: var(--border-radius-sm);
     color: var(--text-primary);
     padding: 14px 18px; /* Generous height for reading and touch */
@@ -372,7 +397,7 @@
   .numeric-input-field:focus {
     border-color: var(--urssaf-blue-primary);
     background: #ffffff;
-    box-shadow: 0 0 0 3px rgba(0, 51, 160, 0.15);
+    box-shadow: 0 0 0 3px rgba(10, 58, 133, 0.14);
   }
 
   /* Accessible Switch Toggle Group */
@@ -380,8 +405,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     padding: 20px;
     border-radius: var(--border-radius-sm);
     margin-bottom: 28px;
@@ -390,8 +415,8 @@
   }
 
   .switch-container:hover {
-    border-color: #94a3b8;
-    background: #f1f5f9;
+    border-color: var(--border-strong);
+    background: #f2f5f9;
   }
 
   .switch-label-block {
@@ -896,10 +921,10 @@
     padding: 32px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 0.9rem;
-    border-top: 1px solid #cbd5e1;
+    font-size: 0.88rem;
+    border-top: 1px solid var(--border-color);
     background: #ffffff;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.03);
   }
 
   .footer-links {
@@ -946,20 +971,32 @@
 
   /* Smart Hero Card Banner */
   .smart-hero-banner {
-    background: linear-gradient(135deg, #0033a0 0%, #00227a 100%);
+    background: linear-gradient(135deg, var(--urssaf-blue-deep) 0%, var(--urssaf-blue-primary) 100%);
     color: #ffffff;
     border-radius: var(--border-radius-md);
-    padding: 32px;
-    box-shadow: 0 8px 32px rgba(0, 51, 160, 0.15);
+    padding: 34px;
+    box-shadow: var(--shadow-lg);
     display: grid;
     grid-template-columns: 1fr 260px;
     gap: 24px;
     align-items: center;
     position: relative;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     margin-bottom: 24px;
     transition: var(--transition-smooth);
+  }
+
+  /* Subtle premium gold hairline along the top edge of the hero */
+  .smart-hero-banner::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(154, 123, 50, 0.55) 50%, transparent 100%);
+    pointer-events: none;
   }
 
   @media (max-width: 768px) {
@@ -972,11 +1009,11 @@
   .smart-hero-banner::before {
     content: "";
     position: absolute;
-    top: -50%;
-    left: -20%;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+    top: -40%;
+    right: -10%;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, transparent 68%);
     pointer-events: none;
   }
 
@@ -987,25 +1024,25 @@
   }
 
   .hero-pre-title {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-family: var(--font-heading);
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #93c5fd;
+    letter-spacing: 0.14em;
+    color: #a9c2e6;
   }
 
   .hero-main-value {
-    font-size: 2.8rem;
+    font-size: 2.7rem;
     font-family: var(--font-heading);
-    font-weight: 850;
+    font-weight: 750;
     letter-spacing: -0.03em;
     line-height: 1.1;
     color: #ffffff;
   }
 
   .hero-main-value.text-green {
-    color: #4ade80;
+    color: #6ee7a8;
   }
 
   .hero-unit {
@@ -1055,25 +1092,25 @@
 
   .pill-value {
     font-family: var(--font-heading);
-    font-weight: 800;
-    font-size: 1.25rem;
+    font-weight: 700;
+    font-size: 1.2rem;
     color: #ffffff;
   }
 
   /* Sankey Flow Container */
   .sankey-flow-container {
     background: var(--bg-panel);
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius-md);
     padding: 28px;
-    box-shadow: 0 4px 20px rgba(10, 17, 40, 0.04);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 24px;
     transition: var(--transition-smooth);
   }
 
   .sankey-flow-container:hover {
-    border-color: #94a3b8;
-    box-shadow: 0 10px 30px rgba(10, 17, 40, 0.08);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
   }
 
   .sankey-flow-title-block {
@@ -1081,18 +1118,51 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 24px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border-color);
     padding-bottom: 14px;
+    gap: 16px;
+    flex-wrap: wrap;
   }
 
   .sankey-flow-title {
     font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 1.15rem;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .sankey-flow-subtitle {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  /* Collapse drill-down control */
+  .sankey-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-heading);
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--urssaf-blue-primary);
+    background: var(--urssaf-blue-light);
+    border: 1px solid var(--urssaf-blue-light-border);
+    border-radius: var(--border-radius-sm);
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    min-height: 40px;
+  }
+
+  .sankey-collapse-btn:hover {
+    background: var(--urssaf-blue-primary);
+    color: #ffffff;
+    border-color: var(--urssaf-blue-primary);
   }
 
   .sankey-svg {
@@ -1104,22 +1174,22 @@
   /* Base style for nodes */
   .sankey-node-rect {
     fill: #ffffff;
-    stroke: #cbd5e1;
+    stroke: var(--border-strong);
     stroke-width: 1.5;
-    rx: 8px;
-    ry: 8px;
-    filter: drop-shadow(0 2px 6px rgba(10, 17, 40, 0.02));
+    rx: 9px;
+    ry: 9px;
+    filter: drop-shadow(0 2px 5px rgba(16, 24, 40, 0.04));
     transition: var(--transition-smooth);
   }
 
   .sankey-node-rect.reste-a-charge {
     stroke: var(--accent-success);
-    fill: #f0fdf4;
+    fill: #f1f8f4;
   }
 
   .sankey-node-rect.credit-impot {
-    stroke: #22c55e;
-    fill: #f0fdf4;
+    stroke: var(--accent-success);
+    fill: #eef6f1;
   }
 
   .sankey-node-rect.coût-brut {
@@ -1128,23 +1198,114 @@
   }
 
   .sankey-node-rect.salaire-net {
-    stroke: #4f46e5;
-    fill: #f5f3ff;
+    stroke: #3a4a9c;
+    fill: #eef0fa;
   }
 
   .sankey-node-rect.charges-sal {
-    stroke: #3b82f6;
-    fill: #eff6ff;
+    stroke: #2f6fed;
+    fill: #eef4fd;
   }
 
   .sankey-node-rect.charges-pat {
-    stroke: #64748b;
-    fill: #f8fafc;
+    stroke: #5b6b86;
+    fill: #f3f5f9;
   }
 
   .sankey-node-rect:hover {
     transform: translateY(-1px);
-    filter: drop-shadow(0 6px 14px rgba(10, 17, 40, 0.06));
+    filter: drop-shadow(0 6px 14px rgba(16, 24, 40, 0.08));
+  }
+
+  /* Active (expanded) parent charge node emphasis */
+  .sankey-interactive-node.is-active .sankey-node-rect.clickable {
+    stroke-width: 2.5px;
+    filter: drop-shadow(0 8px 20px rgba(10, 58, 133, 0.16));
+  }
+
+  .sankey-interactive-node.is-active .sankey-node-rect.charges-sal {
+    stroke: #2f6fed;
+    fill: #e4eefc;
+  }
+
+  .sankey-interactive-node.is-active .sankey-node-rect.charges-pat {
+    stroke: #4a5970;
+    fill: #eaeef4;
+  }
+
+  /* Granular 4th-column sub-nodes */
+  .sankey-subnode-col-title {
+    font-family: var(--font-heading);
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--text-secondary);
+    letter-spacing: 0.02em;
+  }
+
+  .sankey-subnode-rect {
+    fill: #ffffff;
+    stroke-width: 1.5;
+    rx: 8px;
+    ry: 8px;
+    filter: drop-shadow(0 2px 5px rgba(16, 24, 40, 0.05));
+    transition: var(--transition-smooth);
+  }
+
+  .sankey-subnode { transition: var(--transition-smooth); }
+
+  .sankey-subnode:hover .sankey-subnode-rect {
+    filter: drop-shadow(0 6px 14px rgba(16, 24, 40, 0.1));
+  }
+
+  .sankey-subnode-label {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    fill: var(--text-primary);
+    text-anchor: start;
+  }
+
+  .sankey-subnode-value {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    fill: var(--text-secondary);
+    text-anchor: start;
+  }
+
+  .sankey-subnode-rate {
+    fill: var(--text-muted);
+    font-weight: 500;
+  }
+
+  /* Contextual exonération note under the diagram */
+  .sankey-exo-note {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-gold);
+    border-radius: var(--border-radius-sm);
+    padding: 16px 18px;
+    margin-top: 20px;
+  }
+
+  .sankey-exo-note svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--accent-gold);
+  }
+
+  .sankey-exo-note p {
+    margin: 0;
+    font-size: 0.86rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+
+  .sankey-exo-note strong {
+    color: var(--text-primary);
   }
 
   /* S-Curve paths animations */
@@ -1184,91 +1345,12 @@
   }
 
   .sankey-node-rect.salaire-net + g .sankey-text-value {
-    fill: #4f46e5;
+    fill: #3a4a9c;
   }
 }
 
 @layer components {
-  /* Modal backdrop & overlays for premium on-demand details */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(10, 17, 40, 0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    opacity: 0;
-    animation: fadeIn 0.25s forwards cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .modal-container {
-    background: var(--bg-panel);
-    border-radius: var(--border-radius-md);
-    border: 1px solid #cbd5e1;
-    max-width: 780px;
-    width: 100%;
-    box-shadow: 0 24px 60px rgba(0, 51, 160, 0.18);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    transform: translateY(24px);
-    animation: slideUp 0.25s forwards cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .modal-header {
-    background: var(--urssaf-blue-primary);
-    color: #ffffff;
-    padding: 20px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  }
-
-  .modal-title {
-    font-family: var(--font-heading);
-    font-size: 1.2rem;
-    font-weight: 800;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .modal-close-btn {
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: var(--border-radius-sm);
-    transition: var(--transition-smooth);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  .modal-close-btn:hover {
-    background: rgba(255, 255, 255, 0.18);
-    transform: scale(1.05);
-  }
-
-  .modal-body {
-    padding: 24px;
-    overflow-y: auto;
-    max-height: calc(100vh - 180px);
-  }
-
-  /* Hover states for interactive nodes */
+  /* Hover states for interactive (expandable) nodes */
   .sankey-node-rect.clickable {
     cursor: pointer;
   }
@@ -1276,7 +1358,7 @@
   .sankey-node-rect.clickable:hover {
     stroke-width: 2.5px;
     stroke: var(--urssaf-blue-primary);
-    filter: drop-shadow(0 8px 24px rgba(0, 51, 160, 0.15));
+    filter: drop-shadow(0 8px 22px rgba(10, 58, 133, 0.16));
     transform: translateY(-2px);
   }
 
@@ -1294,14 +1376,6 @@
   .sankey-text-link:hover {
     fill: var(--urssaf-blue-hover);
     text-decoration: underline;
-  }
-
-  @keyframes fadeIn {
-    to { opacity: 1; }
-  }
-
-  @keyframes slideUp {
-    to { transform: translateY(0); }
   }
 }
 

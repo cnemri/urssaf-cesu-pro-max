@@ -11,8 +11,8 @@ export default function Home() {
   const [targetHourlyCost, setTargetHourlyCost] = useState(20.00); // Target hourly out-of-pocket cost (Inverse)
   const [creditDimpot, setCreditDimpot] = useState(true); // Toggle to account for credit d'impôt (PCH/APA) - default true for disability helpers
 
-  // On-demand modal detail state
-  const [activeModal, setActiveModal] = useState(null); // 'employee' | 'employer' | null
+  // In-diagram granular drill-down state (replaces modal tables)
+  const [expandedNode, setExpandedNode] = useState(null); // 'employee' | 'employer' | null
 
   // Synchronize inputs & calculate outputs reactively
   const payrollDetails = useMemo(() => {
@@ -21,13 +21,13 @@ export default function Home() {
     } else {
       // Calculate target monthly cost based on target hourly cost and hours worked
       const targetMonthlyCost = targetHourlyCost * nbHr;
-      
+
       // Bisection solve for required net hourly wage
       const solvedSalHr = calculateInverse(targetMonthlyCost, nbHr, creditDimpot);
-      
+
       // Compute full detailed forward breakdown on this solved rate
       const details = calculateForward(solvedSalHr, nbHr, creditDimpot);
-      
+
       return {
         ...details,
         solvedSalHr
@@ -35,11 +35,11 @@ export default function Home() {
     }
   }, [mode, salHr, nbHr, targetHourlyCost, creditDimpot]);
 
-  // Handle escape key to close modals
+  // Handle escape key to collapse an expanded section
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setActiveModal(null);
+        setExpandedNode(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -57,6 +57,8 @@ export default function Home() {
 
   // Solved active net wage to show/use
   const activeSalHr = mode === 'forward' ? salHr : (payrollDetails.solvedSalHr || 10.82);
+
+  const toggleExpand = (key) => setExpandedNode((cur) => (cur === key ? null : key));
 
   // Coordinates and heights calculation for the Sankey flow diagram
   const H_max = 140; // Max node height
@@ -94,27 +96,100 @@ export default function Home() {
     }
   };
 
+  // ----- Granular breakdowns used by the drill-down 4th column -----
+  const isEmployee = expandedNode === 'employee';
+  const isEmployer = expandedNode === 'employer';
+  const expanded = expandedNode !== null;
+  const subAccent = isEmployee ? '#2f6fed' : '#5b6b86'; // refined blue vs slate
+
+  // Stable (memoized) sub-node list for the expanded section
+  const subNodes = useMemo(() => {
+    if (isEmployee) {
+      return [
+        { key: 'csgNonDed', label: 'CSG/CRDS non déduct.', value: employee.csgNonDed, rate: '2.90%', basis: csgBasis },
+        { key: 'csgDed', label: 'CSG déductible', value: employee.csgDed, rate: '6.80%', basis: csgBasis },
+        { key: 'vieillesse', label: 'Vieillesse (Sécu. soc.)', value: employee.vieillesse, rate: '6.90% + 0.40%', basis: gross },
+        { key: 'retraite', label: 'Retraite compl. IRCEM', value: employee.retraite, rate: 'Progressif', basis: gross },
+        { key: 'prevoyance', label: 'Prévoyance IRCEM', value: employee.prevoyance, rate: '1.04%', basis: Math.min(gross, 4005) },
+      ];
+    }
+    if (isEmployer) {
+      return [
+        { key: 'accident', label: 'Accidents du travail', value: employer.accident, rate: '2.06%', basis: gross },
+        { key: 'retraite', label: 'Retraite compl. IRCEM', value: employer.retraite, rate: 'Progressif', basis: gross },
+        { key: 'chomage', label: 'Assurance chômage', value: employer.chomage, rate: '4.00%', basis: gross },
+        { key: 'prevoyance', label: 'Prévoyance IRCEM', value: employer.prevoyance, rate: 'Progressif', basis: gross },
+        { key: 'cfp', label: 'Formation pro. (CFP)', value: employer.cfp, rate: '0.85%', basis: gross },
+        { key: 'csa', label: 'Solidarité autonomie', value: employer.csa, rate: '0.30%', basis: gross },
+        { key: 'sante', label: 'Médecine du travail', value: employer.sante, rate: '2.70% (cap 5€)', basis: gross },
+        { key: 'fnal', label: 'FNAL (logement)', value: employer.fnal, rate: '0.10%', basis: Math.min(gross, 4005) },
+        { key: 'dialogue', label: 'Dialogue social', value: employer.dialogue, rate: '0.016%', basis: gross },
+      ];
+    }
+    return [];
+  }, [isEmployee, isEmployer, employee, employer, csgBasis, gross]);
+
+  // Geometry for the granular sub-node column (only used when expanded)
+  const SUB_X = 930;
+  const SUB_W = 196;
+  const STACK_TOP = 24;
+  const STACK_HEIGHT = 512;
+  const SUB_GAP = 8;
+  const SUB_MIN_H = 30;
+
+  // Parent node geometry (employee = node 5, employer = node 6)
+  const parentTop = isEmployee ? (170 - H5 / 2) : (270 - H6 / 2);
+  const parentHeight = isEmployee ? Math.max(4, H5) : Math.max(4, H6);
+  const parentTotal = subNodes.reduce((s, i) => s + i.value, 0) || 1;
+
+  // Lay out sub-nodes vertically (min height + proportional flex distribution)
+  const subLayout = useMemo(() => {
+    const n = subNodes.length;
+    if (n === 0) return [];
+    const totalGap = SUB_GAP * (n - 1);
+    const baseSum = SUB_MIN_H * n;
+    const flexible = Math.max(0, STACK_HEIGHT - totalGap - baseSum);
+    let y = STACK_TOP;
+    return subNodes.map((it) => {
+      const h = SUB_MIN_H + (it.value / parentTotal) * flexible;
+      const node = { ...it, y, h, cy: y + h / 2 };
+      y += h + SUB_GAP;
+      return node;
+    });
+  }, [subNodes, parentTotal]);
+
+  // Source Y points along the parent node's right edge, partitioned by value
+  const subSourceCys = useMemo(() => {
+    let acc = 0;
+    return subNodes.map((it) => {
+      const segH = (it.value / parentTotal) * parentHeight;
+      const cy = parentTop + acc + segH / 2;
+      acc += segH;
+      return cy;
+    });
+  }, [subNodes, parentTotal, parentTop, parentHeight]);
+
   // Render node text label blocks inside nodes smartly depending on height
-  const renderNodeText = (cx, cy, height, label, value, subValue, isClickable = false) => {
+  const renderNodeText = (cx, cy, height, label, value, subValue, isClickable = false, linkText = 'Détail ↗') => {
     if (height < 22) {
       if (isClickable) {
         return (
           <g transform={`translate(${cx}, ${cy})`} style={{ textAnchor: 'middle' }}>
             <text className="sankey-text-value sankey-text-link" y={4} style={{ fontSize: '11px', fontWeight: '800' }}>
-              {value} ↗
+              {value}
             </text>
           </g>
         );
       }
       return null;
     }
-    
+
     if (height < 45) {
       if (isClickable) {
         return (
           <g transform={`translate(${cx}, ${cy})`} style={{ textAnchor: 'middle' }}>
             <text className="sankey-text-value" y={-2} style={{ fontSize: '11px' }}>{value}</text>
-            <text className="sankey-text-link" y={10} style={{ fontSize: '8px' }}>Détail ↗</text>
+            <text className="sankey-text-link" y={10} style={{ fontSize: '8px' }}>{linkText}</text>
           </g>
         );
       }
@@ -124,18 +199,18 @@ export default function Home() {
         </g>
       );
     }
-    
+
     if (isClickable) {
       return (
         <g transform={`translate(${cx}, ${cy})`} style={{ textAnchor: 'middle' }}>
           <text className="sankey-text-label" y={-10} style={{ fontSize: '9px' }}>{label}</text>
           <text className="sankey-text-value" y={6} style={{ fontSize: '13px' }}>{value}</text>
           <text className="sankey-text-label" y={18} style={{ fontSize: '9px', opacity: 0.75 }}>{subValue}</text>
-          <text className="sankey-text-link" y={30} style={{ fontSize: '8.5px' }}>Détail ↗</text>
+          <text className="sankey-text-link" y={30} style={{ fontSize: '8.5px' }}>{linkText}</text>
         </g>
       );
     }
-    
+
     return (
       <g transform={`translate(${cx}, ${cy})`} style={{ textAnchor: 'middle' }}>
         <text className="sankey-text-label" y={-8} style={{ fontSize: '9px' }}>{label}</text>
@@ -145,18 +220,46 @@ export default function Home() {
     );
   };
 
+  // Renders a single granular sub-node card in the 4th column
+  const renderSubNode = (node) => {
+    const showValueLine = node.h >= 34;
+    return (
+      <g key={node.key} className="sankey-subnode">
+        <title>{`${node.label} — ${node.value.toFixed(2)} € (${(node.value / nbHr).toFixed(2)} €/h) · Taux ${node.rate}`}</title>
+        <rect
+          className="sankey-subnode-rect"
+          x={SUB_X}
+          y={node.y}
+          width={SUB_W}
+          height={node.h}
+          style={{ stroke: subAccent }}
+        />
+        <rect x={SUB_X} y={node.y} width={4} height={node.h} fill={subAccent} rx={2} />
+        <g transform={`translate(${SUB_X + 16}, ${node.cy})`}>
+          <text className="sankey-subnode-label" y={showValueLine ? -3 : 3.5}>{node.label}</text>
+          {showValueLine && (
+            <text className="sankey-subnode-value" y={11}>
+              {node.value.toFixed(2)} €
+              <tspan className="sankey-subnode-rate"> · {node.rate}</tspan>
+            </text>
+          )}
+        </g>
+      </g>
+    );
+  };
+
   return (
     <>
       <header className="header-container">
         <a href="#" className="brand-logo" aria-label="Page d'accueil de l'estimateur de salaire URSSAF CESU">
           URSSAF CESU <span>Estimateur Pro Max</span>
-          <span className="brand-badge" style={{ marginLeft: '12px' }}>PCH / APA Exonération 70</span>
+          <span className="brand-badge" style={{ marginLeft: '12px' }}>PCH / APA · Exonération 70</span>
         </a>
       </header>
 
       {/* Main Container Grid */}
       <main className="main-wrapper" id="main-content">
-        
+
         {/* Left Column: Input Settings Card */}
         <section className="glass-panel" aria-labelledby="config-title">
           <h2 className="panel-title" id="config-title">
@@ -188,7 +291,7 @@ export default function Home() {
 
           {/* Accessible Mode Selection Tabs */}
           <div className="tab-group" role="tablist" aria-label="Modes de simulation">
-            <button 
+            <button
               id="tab-forward"
               role="tab"
               aria-selected={mode === 'forward'}
@@ -202,7 +305,7 @@ export default function Home() {
               </svg>
               Partir du Salaire Net
             </button>
-            <button 
+            <button
               id="tab-inverse"
               role="tab"
               aria-selected={mode === 'inverse'}
@@ -219,7 +322,7 @@ export default function Home() {
           </div>
 
           <div id="panel-controls" role="tabpanel" aria-labelledby={mode === 'forward' ? 'tab-forward' : 'tab-inverse'}>
-            
+
             {/* Input 1: Hours Worked */}
             <div className="form-group">
               <div className="label-container">
@@ -231,28 +334,28 @@ export default function Home() {
                 </span>
               </div>
               <div className="slider-wrapper">
-                <input 
+                <input
                   id="nbHr-slider"
-                  type="range" 
-                  min="1" 
-                  max="174" 
+                  type="range"
+                  min="1"
+                  max="174"
                   step="0.5"
-                  value={nbHr} 
+                  value={nbHr}
                   onChange={(e) => setNbHr(parseFloat(e.target.value))}
-                  className="input-slider" 
+                  className="input-slider"
                   aria-label="Glisseur d'ajustement du nombre d'heures mensuelles"
                 />
               </div>
               <label htmlFor="nbHr-numeric" className="sr-only" style={{ display: 'none' }}>Saisir heures mensuelles</label>
-              <input 
+              <input
                 id="nbHr-numeric"
-                type="number" 
+                type="number"
                 min="1"
                 max="174"
                 step="0.1"
                 value={nbHr === 0 ? '' : nbHr}
                 onChange={(e) => handleNumericInput(e.target.value, setNbHr, 1, 174)}
-                className="numeric-input-field" 
+                className="numeric-input-field"
                 aria-label="Saisie manuelle du nombre d'heures mensuelles"
               />
             </div>
@@ -269,28 +372,28 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="slider-wrapper">
-                  <input 
+                  <input
                     id="salHr-slider"
-                    type="range" 
-                    min="10.82" 
-                    max="50.00" 
+                    type="range"
+                    min="10.82"
+                    max="50.00"
                     step="0.05"
-                    value={salHr} 
+                    value={salHr}
                     onChange={(e) => setSalHr(parseFloat(e.target.value))}
-                    className="input-slider" 
+                    className="input-slider"
                     aria-label="Glisseur d'ajustement du salaire horaire net"
                   />
                 </div>
                 <label htmlFor="salHr-numeric" className="sr-only" style={{ display: 'none' }}>Saisir salaire net horaire</label>
-                <input 
+                <input
                   id="salHr-numeric"
-                  type="number" 
+                  type="number"
                   min="10.82"
                   max="150"
                   step="0.01"
                   value={salHr === 0 ? '' : salHr}
                   onChange={(e) => handleNumericInput(e.target.value, setSalHr, 10.82, 150)}
-                  className="numeric-input-field" 
+                  className="numeric-input-field"
                   aria-label="Saisie manuelle du salaire horaire net"
                 />
                 <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', fontWeight: '500' }}>
@@ -312,28 +415,28 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="slider-wrapper">
-                    <input 
+                    <input
                       id="targetHourlyCost-slider"
-                      type="range" 
-                      min="10.00" 
-                      max="50.00" 
+                      type="range"
+                      min="10.00"
+                      max="50.00"
                       step="0.05"
-                      value={targetHourlyCost} 
+                      value={targetHourlyCost}
                       onChange={(e) => setTargetHourlyCost(parseFloat(e.target.value))}
-                      className="input-slider cyan" 
+                      className="input-slider cyan"
                       aria-label="Glisseur d'ajustement du budget horaire cible"
                     />
                   </div>
                   <label htmlFor="targetHourlyCost-numeric" className="sr-only" style={{ display: 'none' }}>Saisir coût horaire cible</label>
-                  <input 
+                  <input
                     id="targetHourlyCost-numeric"
-                    type="number" 
+                    type="number"
                     min="5"
                     max="150"
                     step="0.01"
                     value={targetHourlyCost === 0 ? '' : targetHourlyCost}
                     onChange={(e) => handleNumericInput(e.target.value, setTargetHourlyCost, 5, 150)}
-                    className="numeric-input-field" 
+                    className="numeric-input-field"
                     aria-label="Saisie manuelle du budget horaire cible"
                   />
                   <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', fontWeight: '500' }}>
@@ -364,8 +467,8 @@ export default function Home() {
                 </span>
               </div>
               <label className="toggle-switch">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={creditDimpot}
                   onChange={(e) => setCreditDimpot(e.target.checked)}
                   aria-describedby="toggle-desc"
@@ -381,7 +484,7 @@ export default function Home() {
         {/* Right Column: Dashboard Outputs Display */}
         <section className="dashboard-grid" aria-labelledby="dashboard-title">
           <h2 className="sr-only" id="dashboard-title" style={{ display: 'none' }}>Résultats de la simulation</h2>
-          
+
           {/* Majestic Smart Hero Banner */}
           <div className="smart-hero-banner" role="region" aria-label="Indicateurs clés de la simulation">
             {mode === 'inverse' ? (
@@ -441,8 +544,8 @@ export default function Home() {
             )}
           </div>
 
-          {/* Interactive Sankey Flow Diagram */}
-          <div className="sankey-flow-container">
+          {/* Interactive Sankey Flow Diagram with granular drill-down */}
+          <div className={`sankey-flow-container ${expanded ? 'is-expanded' : ''}`}>
             <div className="sankey-flow-title-block">
               <h3 className="sankey-flow-title">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
@@ -450,92 +553,107 @@ export default function Home() {
                 </svg>
                 Flux Financier Interactif (Sankey)
               </h3>
-              <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--urssaf-blue-primary)' }}>
-                Filiation de l'aide et répartition (Mensuel)
-              </span>
+              {expanded ? (
+                <button
+                  type="button"
+                  className="sankey-collapse-btn"
+                  onClick={() => setExpandedNode(null)}
+                  aria-label="Réduire le détail et revenir au flux global"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="11 17 6 12 11 7" />
+                    <polyline points="18 17 13 12 18 7" />
+                  </svg>
+                  Réduire le détail
+                </button>
+              ) : (
+                <span className="sankey-flow-subtitle">
+                  Cliquez sur une branche de charges pour la décomposer
+                </span>
+              )}
             </div>
 
-            <svg viewBox="0 0 800 340" className="sankey-svg" aria-hidden="true">
+            <svg viewBox={expanded ? '0 0 1140 560' : '0 0 800 340'} className="sankey-svg" aria-hidden="true">
               <defs>
                 {/* Static flow gradients */}
                 <linearGradient id="grad-reste-to-brut" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#0033a0" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#1f9d63" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#0a3a85" stopOpacity="0.22" />
                 </linearGradient>
                 <linearGradient id="grad-credit-to-brut" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#15803d" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#0033a0" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#15803d" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#0a3a85" stopOpacity="0.22" />
                 </linearGradient>
                 <linearGradient id="grad-brut-to-net" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#3a4a9c" stopOpacity="0.22" />
                 </linearGradient>
                 <linearGradient id="grad-brut-to-sal" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#2f6fed" stopOpacity="0.22" />
                 </linearGradient>
                 <linearGradient id="grad-brut-to-pat" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#64748b" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#5b6b86" stopOpacity="0.22" />
                 </linearGradient>
 
                 {/* Animated flowing overlays */}
                 <linearGradient id="grad-flow-reste" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#22c55e" stopOpacity="0.75" />
-                  <stop offset="100%" stopColor="#0033a0" stopOpacity="0.75" />
+                  <stop offset="0%" stopColor="#1f9d63" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="#0a3a85" stopOpacity="0.7" />
                 </linearGradient>
                 <linearGradient id="grad-flow-credit" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#15803d" stopOpacity="0.75" />
-                  <stop offset="100%" stopColor="#0033a0" stopOpacity="0.75" />
+                  <stop offset="0%" stopColor="#15803d" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="#0a3a85" stopOpacity="0.7" />
                 </linearGradient>
                 <linearGradient id="grad-flow-net" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.75" />
-                  <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.75" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="#3a4a9c" stopOpacity="0.7" />
                 </linearGradient>
                 <linearGradient id="grad-flow-sal" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.75" />
-                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.75" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="#2f6fed" stopOpacity="0.7" />
                 </linearGradient>
                 <linearGradient id="grad-flow-pat" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0033a0" stopOpacity="0.75" />
-                  <stop offset="100%" stopColor="#64748b" stopOpacity="0.75" />
+                  <stop offset="0%" stopColor="#0a3a85" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="#5b6b86" stopOpacity="0.7" />
                 </linearGradient>
               </defs>
 
               {/* Flows: Left side to Middle (Node 3) */}
               {H1 > 0 && (
                 <>
-                  <path 
-                    d={getSankeyPath(200, 90, 320, cy1_left)} 
-                    stroke="url(#grad-reste-to-brut)" 
-                    strokeWidth={Math.max(1.5, H1)} 
-                    fill="none" 
+                  <path
+                    d={getSankeyPath(200, 90, 320, cy1_left)}
+                    stroke="url(#grad-reste-to-brut)"
+                    strokeWidth={Math.max(1.5, H1)}
+                    fill="none"
                   />
-                  <path 
-                    d={getSankeyPath(200, 90, 320, cy1_left)} 
-                    stroke="url(#grad-flow-reste)" 
-                    strokeWidth={Math.min(3, Math.max(1, H1))} 
-                    fill="none" 
-                    strokeDasharray="8, 12" 
-                    className="flowing-dash" 
+                  <path
+                    d={getSankeyPath(200, 90, 320, cy1_left)}
+                    stroke="url(#grad-flow-reste)"
+                    strokeWidth={Math.min(3, Math.max(1, H1))}
+                    fill="none"
+                    strokeDasharray="8, 12"
+                    className="flowing-dash"
                   />
                 </>
               )}
               {H2 > 0 && (
                 <>
-                  <path 
-                    d={getSankeyPath(200, 250, 320, cy2_left)} 
-                    stroke="url(#grad-credit-to-brut)" 
-                    strokeWidth={Math.max(1.5, H2)} 
-                    fill="none" 
+                  <path
+                    d={getSankeyPath(200, 250, 320, cy2_left)}
+                    stroke="url(#grad-credit-to-brut)"
+                    strokeWidth={Math.max(1.5, H2)}
+                    fill="none"
                   />
-                  <path 
-                    d={getSankeyPath(200, 250, 320, cy2_left)} 
-                    stroke="url(#grad-flow-credit)" 
-                    strokeWidth={Math.min(3, Math.max(1, H2))} 
-                    fill="none" 
-                    strokeDasharray="8, 12" 
-                    className="flowing-dash" 
+                  <path
+                    d={getSankeyPath(200, 250, 320, cy2_left)}
+                    stroke="url(#grad-flow-credit)"
+                    strokeWidth={Math.min(3, Math.max(1, H2))}
+                    fill="none"
+                    strokeDasharray="8, 12"
+                    className="flowing-dash"
                   />
                 </>
               )}
@@ -543,466 +661,249 @@ export default function Home() {
               {/* Flows: Middle to Right side */}
               {H4 > 0 && (
                 <>
-                  <path 
-                    d={getSankeyPath(480, cy4_right, 600, 70)} 
-                    stroke="url(#grad-brut-to-net)" 
-                    strokeWidth={Math.max(1.5, H4)} 
-                    fill="none" 
+                  <path
+                    d={getSankeyPath(480, cy4_right, 600, 70)}
+                    stroke="url(#grad-brut-to-net)"
+                    strokeWidth={Math.max(1.5, H4)}
+                    fill="none"
                   />
-                  <path 
-                    d={getSankeyPath(480, cy4_right, 600, 70)} 
-                    stroke="url(#grad-flow-net)" 
-                    strokeWidth={Math.min(3, Math.max(1, H4))} 
-                    fill="none" 
-                    strokeDasharray="8, 12" 
-                    className="flowing-dash" 
+                  <path
+                    d={getSankeyPath(480, cy4_right, 600, 70)}
+                    stroke="url(#grad-flow-net)"
+                    strokeWidth={Math.min(3, Math.max(1, H4))}
+                    fill="none"
+                    strokeDasharray="8, 12"
+                    className="flowing-dash"
                   />
                 </>
               )}
               {H5 > 0 && (
                 <>
-                  <path 
-                    d={getSankeyPath(480, cy5_right, 600, 170)} 
-                    stroke="url(#grad-brut-to-sal)" 
-                    strokeWidth={Math.max(1.5, H5)} 
-                    fill="none" 
+                  <path
+                    d={getSankeyPath(480, cy5_right, 600, 170)}
+                    stroke="url(#grad-brut-to-sal)"
+                    strokeWidth={Math.max(1.5, H5)}
+                    fill="none"
                   />
-                  <path 
-                    d={getSankeyPath(480, cy5_right, 600, 170)} 
-                    stroke="url(#grad-flow-sal)" 
-                    strokeWidth={Math.min(3, Math.max(1, H5))} 
-                    fill="none" 
-                    strokeDasharray="8, 12" 
-                    className="flowing-dash" 
+                  <path
+                    d={getSankeyPath(480, cy5_right, 600, 170)}
+                    stroke="url(#grad-flow-sal)"
+                    strokeWidth={Math.min(3, Math.max(1, H5))}
+                    fill="none"
+                    strokeDasharray="8, 12"
+                    className="flowing-dash"
                   />
                 </>
               )}
               {H6 > 0 && (
                 <>
-                  <path 
-                    d={getSankeyPath(480, cy6_right, 600, 270)} 
-                    stroke="url(#grad-brut-to-pat)" 
-                    strokeWidth={Math.max(1.5, H6)} 
-                    fill="none" 
+                  <path
+                    d={getSankeyPath(480, cy6_right, 600, 270)}
+                    stroke="url(#grad-brut-to-pat)"
+                    strokeWidth={Math.max(1.5, H6)}
+                    fill="none"
                   />
-                  <path 
-                    d={getSankeyPath(480, cy6_right, 600, 270)} 
-                    stroke="url(#grad-flow-pat)" 
-                    strokeWidth={Math.min(3, Math.max(1, H6))} 
-                    fill="none" 
-                    strokeDasharray="8, 12" 
-                    className="flowing-dash" 
+                  <path
+                    d={getSankeyPath(480, cy6_right, 600, 270)}
+                    stroke="url(#grad-flow-pat)"
+                    strokeWidth={Math.min(3, Math.max(1, H6))}
+                    fill="none"
+                    strokeDasharray="8, 12"
+                    className="flowing-dash"
                   />
                 </>
               )}
 
+              {/* Granular drill-down flows: parent charge node -> 4th column sub-nodes */}
+              {expanded && subLayout.map((node, i) => (
+                <g key={`subflow-${node.key}`}>
+                  <path
+                    d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
+                    stroke={subAccent}
+                    strokeOpacity="0.16"
+                    strokeWidth={Math.max(1.5, Math.min(node.h, (node.value / parentTotal) * parentHeight) || 1.5)}
+                    fill="none"
+                  />
+                  <path
+                    d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
+                    stroke={subAccent}
+                    strokeOpacity="0.65"
+                    strokeWidth={Math.min(2.5, Math.max(1, node.h * 0.18))}
+                    fill="none"
+                    strokeDasharray="7, 11"
+                    className="flowing-dash"
+                  />
+                </g>
+              ))}
+
               {/* NODES */}
               {/* Node 1: Reste-à-charge */}
-              <rect 
-                className="sankey-node-rect reste-a-charge" 
-                x={40} 
-                y={90 - H1 / 2} 
-                width={160} 
-                height={Math.max(4, H1)} 
+              <rect
+                className="sankey-node-rect reste-a-charge"
+                x={40}
+                y={90 - H1 / 2}
+                width={160}
+                height={Math.max(4, H1)}
               />
               {renderNodeText(
-                120, 
-                90, 
-                H1, 
-                creditDimpot ? "Reste-à-charge" : "Coût Net Payé", 
-                `${totals.netCost.toFixed(2)} €`, 
+                120,
+                90,
+                H1,
+                creditDimpot ? "Reste-à-charge" : "Coût Net Payé",
+                `${totals.netCost.toFixed(2)} €`,
                 `${totals.hourlyNetCost.toFixed(2)} €/h`
               )}
 
               {/* Node 2: Crédit d'impôt */}
               {H2 > 0 && (
                 <>
-                  <rect 
-                    className="sankey-node-rect credit-impot" 
-                    x={40} 
-                    y={250 - H2 / 2} 
-                    width={160} 
-                    height={Math.max(4, H2)} 
+                  <rect
+                    className="sankey-node-rect credit-impot"
+                    x={40}
+                    y={250 - H2 / 2}
+                    width={160}
+                    height={Math.max(4, H2)}
                   />
                   {renderNodeText(
-                    120, 
-                    250, 
-                    H2, 
-                    "Crédit d'impôt (50%)", 
-                    `${totals.taxCredit.toFixed(2)} €`, 
+                    120,
+                    250,
+                    H2,
+                    "Crédit d'impôt (50%)",
+                    `${totals.taxCredit.toFixed(2)} €`,
                     `${(totals.taxCredit / nbHr).toFixed(2)} €/h`
                   )}
                 </>
               )}
 
               {/* Node 3: Coût Brut Facturé */}
-              <rect 
-                className="sankey-node-rect coût-brut" 
-                x={320} 
-                y={170 - H3 / 2} 
-                width={160} 
-                height={H3} 
+              <rect
+                className="sankey-node-rect coût-brut"
+                x={320}
+                y={170 - H3 / 2}
+                width={160}
+                height={H3}
               />
               {renderNodeText(
-                400, 
-                170, 
-                H3, 
-                "Coût Brut Facturé", 
-                `${totals.totalCostBeforeTaxCredit.toFixed(2)} €`, 
+                400,
+                170,
+                H3,
+                "Coût Brut Facturé",
+                `${totals.totalCostBeforeTaxCredit.toFixed(2)} €`,
                 `${totals.hourlyCostBeforeTaxCredit.toFixed(2)} €/h`
               )}
 
               {/* Node 4: Salaire Net */}
-              <rect 
-                className="sankey-node-rect salaire-net" 
-                x={600} 
-                y={70 - H4 / 2} 
-                width={160} 
-                height={Math.max(4, H4)} 
+              <rect
+                className="sankey-node-rect salaire-net"
+                x={600}
+                y={70 - H4 / 2}
+                width={160}
+                height={Math.max(4, H4)}
               />
               {renderNodeText(
-                680, 
-                70, 
-                H4, 
-                "Salaire Net Salarié", 
-                `${salNet.toFixed(2)} €`, 
+                680,
+                70,
+                H4,
+                "Salaire Net Salarié",
+                `${salNet.toFixed(2)} €`,
                 `${activeSalHr.toFixed(2)} €/h`
               )}
 
-              {/* Node 5: Charges Salariales */}
+              {/* Node 5: Charges Salariales (expandable) */}
               <g
-                className="sankey-interactive-node"
-                onClick={() => setActiveModal('employee')}
+                className={`sankey-interactive-node ${isEmployee ? 'is-active' : ''}`}
+                onClick={() => toggleExpand('employee')}
                 style={{ cursor: 'pointer' }}
                 role="button"
                 tabIndex={0}
-                aria-label="Afficher le détail des charges salarié (déduites)"
+                aria-expanded={isEmployee}
+                aria-label="Décomposer le détail des charges salarié (déduites)"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    setActiveModal('employee');
+                    toggleExpand('employee');
                   }
                 }}
               >
-                <rect 
-                  className="sankey-node-rect charges-sal clickable" 
-                  x={600} 
-                  y={170 - H5 / 2} 
-                  width={160} 
-                  height={Math.max(4, H5)} 
+                <rect
+                  className="sankey-node-rect charges-sal clickable"
+                  x={600}
+                  y={170 - H5 / 2}
+                  width={160}
+                  height={Math.max(4, H5)}
                 />
                 {renderNodeText(
-                  680, 
-                  170, 
-                  H5, 
-                  "Salariales (Retenues)", 
-                  `${employee.total.toFixed(2)} €`, 
+                  680,
+                  170,
+                  H5,
+                  "Salariales (Retenues)",
+                  `${employee.total.toFixed(2)} €`,
                   `${(employee.total / nbHr).toFixed(2)} €/h`,
-                  true
+                  true,
+                  isEmployee ? 'Réduire ↩' : 'Décomposer ↗'
                 )}
               </g>
 
-              {/* Node 6: Charges Patronales */}
+              {/* Node 6: Charges Patronales (expandable) */}
               <g
-                className="sankey-interactive-node"
-                onClick={() => setActiveModal('employer')}
+                className={`sankey-interactive-node ${isEmployer ? 'is-active' : ''}`}
+                onClick={() => toggleExpand('employer')}
                 style={{ cursor: 'pointer' }}
                 role="button"
                 tabIndex={0}
-                aria-label="Afficher le détail des charges patronales (exonérées à 100% sur le tronc commun)"
+                aria-expanded={isEmployer}
+                aria-label="Décomposer le détail des charges patronales (exonérées à 100% sur le tronc commun)"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    setActiveModal('employer');
+                    toggleExpand('employer');
                   }
                 }}
               >
-                <rect 
-                  className="sankey-node-rect charges-pat clickable" 
-                  x={600} 
-                  y={270 - H6 / 2} 
-                  width={160} 
-                  height={Math.max(4, H6)} 
+                <rect
+                  className="sankey-node-rect charges-pat clickable"
+                  x={600}
+                  y={270 - H6 / 2}
+                  width={160}
+                  height={Math.max(4, H6)}
                 />
                 {renderNodeText(
-                  680, 
-                  270, 
-                  H6, 
-                  "Patronales (Restantes)", 
-                  `${employer.total.toFixed(2)} €`, 
+                  680,
+                  270,
+                  H6,
+                  "Patronales (Restantes)",
+                  `${employer.total.toFixed(2)} €`,
                   `${(employer.total / nbHr).toFixed(2)} €/h`,
-                  true
+                  true,
+                  isEmployer ? 'Réduire ↩' : 'Décomposer ↗'
                 )}
               </g>
-            </svg>
-          </div>
 
-          {/* On-demand premium detailed tables modals */}
-          {activeModal && (
-            <div 
-              className="modal-overlay" 
-              onClick={() => setActiveModal(null)}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="modal-title-id"
-            >
-              <div 
-                className="modal-container" 
-                onClick={(e) => e.stopPropagation()} // Prevent modal closure when clicking inside content
-              >
-                <div className="modal-header">
-                  <h3 className="modal-title" id="modal-title-id">
-                    {activeModal === 'employee' ? (
-                      <>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                          <circle cx="9" cy="7" r="4" />
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                        </svg>
-                        Détail des Charges Salarié (Déduites)
-                      </>
-                    ) : (
-                      <>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                          <line x1="9" y1="3" x2="9" y2="21" />
-                          <line x1="15" y1="3" x2="15" y2="21" />
-                          <line x1="3" y1="9" x2="21" y2="9" />
-                          <line x1="3" y1="15" x2="21" y2="15" />
-                        </svg>
-                        Détail des Charges Patronales (Exonérées à 100% sur le tronc commun)
-                      </>
-                    )}
-                  </h3>
-                  <button 
-                    className="modal-close-btn" 
-                    onClick={() => setActiveModal(null)}
-                    aria-label="Fermer le panneau de détail"
-                  >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <div className="modal-body">
-                  {activeModal === 'employee' ? (
-                    <div className="details-table-wrapper">
-                      <table className="details-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">Cotisation / Branche de protection</th>
-                            <th scope="col">Assiette de calcul</th>
-                            <th scope="col">Taux applicable</th>
-                            <th scope="col" style={{ textAlign: 'right' }}>Montant</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>
-                              <div className="item-name-block">
-                                <span className="item-title">CSG Non Déductible et CRDS</span>
-                                <span className="item-subtitle">98.25% du brut, taux de 2.9% pour la solidarité</span>
-                              </div>
-                            </td>
-                            <td className="mono-cell">{csgBasis.toFixed(2)} €</td>
-                            <td className="mono-cell">2.90%</td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employee.csgNonDed.toFixed(2)} €</td>
-                          </tr>
-                          <tr>
-                            <td>
-                              <div className="item-name-block">
-                                <span className="item-title">CSG Déductible de l'Impôt</span>
-                                <span className="item-subtitle">98.25% du brut, taux de 6.8% déductible des revenus</span>
-                              </div>
-                            </td>
-                            <td className="mono-cell">{csgBasis.toFixed(2)} €</td>
-                            <td className="mono-cell">6.80%</td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employee.csgDed.toFixed(2)} €</td>
-                          </tr>
-                          <tr>
-                            <td>
-                              <div className="item-name-block">
-                                <span className="item-title">Assurance Retraite Obligatoire (Sécurité Sociale)</span>
-                                <span className="item-subtitle">6.9% plafonné (PMSS) + 0.4% déplafonné</span>
-                              </div>
-                            </td>
-                            <td className="mono-cell">{gross.toFixed(2)} €</td>
-                            <td className="mono-cell">Tranche cumulée</td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employee.vieillesse.toFixed(2)} €</td>
-                          </tr>
-                          <tr>
-                            <td>
-                              <div className="item-name-block">
-                                <span className="item-title">Retraite Complémentaire Cadres & Employés (IRCEM)</span>
-                                <span className="item-subtitle">T1 standard 3.15% + CEG 0.86% + T2 progressive 9.86%</span>
-                              </div>
-                            </td>
-                            <td className="mono-cell">{gross.toFixed(2)} €</td>
-                            <td className="mono-cell">Taux progressif</td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employee.retraite.toFixed(2)} €</td>
-                          </tr>
-                          <tr>
-                            <td>
-                              <div className="item-name-block">
-                                <span className="item-title">Prévoyance Santé Complémentaire (IRCEM)</span>
-                                <span className="item-subtitle">1.04% plafonné à l'assiette PMSS (4005 €)</span>
-                              </div>
-                            </td>
-                            <td className="mono-cell">{Math.min(gross, 4005).toFixed(2)} €</td>
-                            <td className="mono-cell">1.04%</td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employee.prevoyance.toFixed(2)} €</td>
-                          </tr>
-                          <tr style={{ borderTop: '2px solid #cbd5e1', background: '#f1f5f9' }}>
-                            <td style={{ fontWeight: '800', color: 'var(--text-primary)' }}>TOTAL DES CHARGES SALARIÉ</td>
-                            <td></td>
-                            <td></td>
-                            <td className="mono-cell bold-cell" style={{ textAlign: 'right', color: 'var(--urssaf-blue-primary)' }}>{employee.total.toFixed(2)} €</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="details-table-wrapper">
-                        <table className="details-table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Cotisation / Branche de protection</th>
-                              <th scope="col">Assiette de calcul</th>
-                              <th scope="col">Taux applicable</th>
-                              <th scope="col" style={{ textAlign: 'right' }}>Montant</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Assurance Accidents du Travail</span>
-                                  <span className="item-subtitle">Couverture obligatoire des accidents de service</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">2.06%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.accident.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">FNAL (Fonds National d'Aide au Logement)</span>
-                                  <span className="item-subtitle">Contribution sociale obligatoire, plafonnée à 4005 €</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{Math.min(gross, 4005).toFixed(2)} €</td>
-                              <td className="mono-cell">0.10%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.fnal.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Contribution Formation Professionnelle (CFP)</span>
-                                  <span className="item-subtitle">Financement légal du droit à la formation professionnelle continue</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">0.85%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.cfp.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Contribution Solidarité Autonomie (CSA)</span>
-                                  <span className="item-subtitle">Soutien légal à l'autonomie des aînés et des personnes handicapées</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">0.30%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.csa.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Dialogue Social Obligatoire</span>
-                                  <span className="item-subtitle">Financement de la négociation collective sectorielle</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">0.016%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.dialogue.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Médecine du Travail (Service de Santé)</span>
-                                  <span className="item-subtitle">Assistance et visites de santé (Taux 2.7% avec cap à 5.00 €)</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">2.70% (cap 5€)</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.sante.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Retraite Complémentaire Employeur (IRCEM)</span>
-                                  <span className="item-subtitle">T1 standard 4.72% + T1 CEG 1.29% + T2 progressive 14.78%</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">Taux progressif</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.retraite.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Prévoyance Patronale IRCEM</span>
-                                  <span className="item-subtitle">Prévoyance standard T1 1.2% + additif 1.25% et T2 1.25%</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">Progressive</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.prevoyance.toFixed(2)} €</td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <div className="item-name-block">
-                                  <span className="item-title">Assurance Chômage Employeur</span>
-                                  <span className="item-subtitle">Sécurité d'emploi des salariés (Taux standard de 4%)</span>
-                                </div>
-                              </td>
-                              <td className="mono-cell">{gross.toFixed(2)} €</td>
-                              <td className="mono-cell">4.00%</td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right' }}>{employer.chomage.toFixed(2)} €</td>
-                            </tr>
-                            <tr style={{ borderTop: '2px solid #cbd5e1', background: '#f1f5f9' }}>
-                              <td style={{ fontWeight: '800', color: 'var(--text-primary)' }}>TOTAL DES CHARGES PATRONALES RESTANTES</td>
-                              <td></td>
-                              <td></td>
-                              <td className="mono-cell bold-cell" style={{ textAlign: 'right', color: 'var(--text-primary)' }}>{employer.total.toFixed(2)} €</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      
-                      {/* Accessibility clarification note about exonérations */}
-                      <div style={{ background: '#fef3c7', padding: '16px', borderRadius: '8px', border: '1px solid #fde68a', marginTop: '16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-warning)" strokeWidth="2.5" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true">
-                          <circle cx="12" cy="12" r="10" />
-                          <line x1="12" y1="16" x2="12" y2="12" />
-                          <line x1="12" y1="8" x2="12.01" y2="8" />
-                        </svg>
-                        <p style={{ fontSize: '0.85rem', color: '#78350f', margin: 0, fontWeight: '500' }}>
-                          <strong>Note d'exonération totale :</strong> En tant que bénéficiaire de la PCH ou de l'APA, vous êtes exonéré à 100% des cotisations de sécurité sociale de base pour l'Assurance Maladie, Maternité, Invalidité, Décès, Vieillesse de base et Allocations Familiales. Ces cotisations exonérées s'élèveraient normalement à plus de 32% de charges en sus, mais n'apparaissent pas ici car elles sont intégralement prises en charge par l'État !
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
+              {/* 4th column: granular sub-node breakdown */}
+              {expanded && (
+                <g className="sankey-subnode-col">
+                  <text className="sankey-subnode-col-title" x={SUB_X} y={STACK_TOP - 8}>
+                    {isEmployee ? 'Détail des cotisations salarié' : 'Détail des cotisations patronales'}
+                  </text>
+                  {subLayout.map((node) => renderSubNode(node))}
+                </g>
+              )}
+            </svg>
+
+            {/* Contextual note shown when employer charges are decomposed */}
+            {isEmployer && (
+              <div className="sankey-exo-note" role="note">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <p>
+                  <strong>Exonération totale PCH / APA :</strong> en tant que bénéficiaire, vous êtes exonéré à 100% des cotisations de sécurité sociale de base (maladie, maternité, invalidité, décès, vieillesse de base et allocations familiales). Ces cotisations — normalement plus de 32% de charges supplémentaires — n'apparaissent pas ici car elles sont intégralement prises en charge par l'État.
+                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
         </section>
 
