@@ -1308,6 +1308,94 @@
     color: var(--text-primary);
   }
 
+  /* ---- Drill-down enter / exit choreography ---- */
+  .sankey-svg {
+    transition: none;
+  }
+
+  /* Sub-node cards scale/translate around their own box, not the SVG origin */
+  .sankey-subnode {
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform, opacity;
+  }
+
+  @keyframes subnode-in {
+    from { opacity: 0; transform: translateX(-16px) scale(0.94); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  @keyframes subnode-out {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to   { opacity: 0; transform: translateX(-12px) scale(0.96); }
+  }
+
+  .sankey-subnode-col.is-open .sankey-subnode {
+    animation: subnode-in 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 34ms);
+  }
+
+  .sankey-subnode-col.is-closing .sankey-subnode {
+    animation: subnode-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  /* Column title fades with the cards */
+  @keyframes subtitle-in { from { opacity: 0; } to { opacity: 1; } }
+  .sankey-subnode-col.is-open .sankey-subnode-col-title {
+    animation: subtitle-in 0.4s ease both;
+    animation-delay: 60ms;
+  }
+  .sankey-subnode-col.is-closing .sankey-subnode-col-title {
+    animation: subnode-out 0.2s ease both;
+  }
+
+  /* Connecting flows grow/dissolve as a group */
+  @keyframes drill-flow-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes drill-flow-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+  .sankey-drill.is-open {
+    animation: drill-flow-in 0.5s ease both;
+    animation-delay: 40ms;
+  }
+  .sankey-drill.is-closing {
+    animation: drill-flow-out 0.24s ease both;
+  }
+
+  /* HTML exonération note slide/fade in sync with the drill-down */
+  @keyframes exo-note-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes exo-note-out {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(6px); }
+  }
+  .sankey-exo-note.is-open {
+    animation: exo-note-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 80ms;
+  }
+  .sankey-exo-note.is-closing {
+    animation: exo-note-out 0.22s ease both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sankey-subnode-col.is-open .sankey-subnode,
+    .sankey-subnode-col.is-closing .sankey-subnode,
+    .sankey-subnode-col.is-open .sankey-subnode-col-title,
+    .sankey-subnode-col.is-closing .sankey-subnode-col-title,
+    .sankey-drill.is-open,
+    .sankey-drill.is-closing,
+    .sankey-exo-note.is-open,
+    .sankey-exo-note.is-closing {
+      animation: none;
+    }
+  }
+
   /* S-Curve paths animations */
   @keyframes flow-dash {
     to {

@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { calculateForward, calculateInverse } from './utils/urssafCalculator';
+
+// Sankey canvas viewBoxes for the collapsed (global) and expanded (drill-down) states
+const COLLAPSED_VB = [0, 0, 800, 340];
+const EXPANDED_VB = [0, 0, 1140, 560];
+const SUB_EXIT_MS = 300; // keep sub-nodes mounted long enough to play their exit animation
 
 export default function Home() {
   // Simulator input states
@@ -35,6 +40,16 @@ export default function Home() {
     }
   }, [mode, salHr, nbHr, targetHourlyCost, creditDimpot]);
 
+  // Which breakdown is actually painted in the 4th column. It lingers after
+  // expandedNode clears so the exit animation can play before unmounting.
+  const [renderNode, setRenderNode] = useState(null);
+
+  // Animated viewBox so toggling smoothly zooms the whole diagram in/out.
+  const [viewBox, setViewBox] = useState(COLLAPSED_VB);
+  const vbRef = useRef(COLLAPSED_VB);
+  const rafRef = useRef(null);
+  const exitTimerRef = useRef(null);
+
   // Handle escape key to collapse an expanded section
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -45,6 +60,47 @@ export default function Home() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Keep the rendered sub-column in sync with the selection, deferring unmount
+  // on collapse so the exit transition is visible.
+  useEffect(() => {
+    if (expandedNode) {
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      setRenderNode(expandedNode);
+    } else {
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = setTimeout(() => setRenderNode(null), SUB_EXIT_MS);
+    }
+    return () => {
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    };
+  }, [expandedNode]);
+
+  // Smoothly interpolate the viewBox toward its target on expand/collapse.
+  useEffect(() => {
+    const target = expandedNode !== null ? EXPANDED_VB : COLLAPSED_VB;
+    const start = vbRef.current.slice();
+    const reduce = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dur = reduce ? 0 : 520;
+    const ease = (t) => 1 - Math.pow(1 - t, 3); // easeOutCubic
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    const tick = (now) => {
+      const p = dur === 0 ? 1 : Math.min(1, (now - t0) / dur);
+      const e = ease(p);
+      const cur = start.map((s, i) => s + (target[i] - s) * e);
+      vbRef.current = cur;
+      setViewBox(cur);
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [expandedNode]);
 
   const {
     salNet,
@@ -97,14 +153,20 @@ export default function Home() {
   };
 
   // ----- Granular breakdowns used by the drill-down 4th column -----
+  // Selection state (drives node highlight + the title-block controls)
   const isEmployee = expandedNode === 'employee';
   const isEmployer = expandedNode === 'employer';
   const expanded = expandedNode !== null;
-  const subAccent = isEmployee ? '#2f6fed' : '#5b6b86'; // refined blue vs slate
+  // Rendered state (drives the 4th column; persists during the exit animation)
+  const renderEmployee = renderNode === 'employee';
+  const renderEmployer = renderNode === 'employer';
+  const isClosing = expandedNode === null && renderNode !== null;
+  const drillClass = isClosing ? 'is-closing' : 'is-open';
+  const subAccent = renderEmployee ? '#2f6fed' : '#5b6b86'; // refined blue vs slate
 
   // Stable (memoized) sub-node list for the expanded section
   const subNodes = useMemo(() => {
-    if (isEmployee) {
+    if (renderEmployee) {
       return [
         { key: 'csgNonDed', label: 'CSG/CRDS non déduct.', value: employee.csgNonDed, rate: '2.90%', basis: csgBasis },
         { key: 'csgDed', label: 'CSG déductible', value: employee.csgDed, rate: '6.80%', basis: csgBasis },
@@ -113,7 +175,7 @@ export default function Home() {
         { key: 'prevoyance', label: 'Prévoyance IRCEM', value: employee.prevoyance, rate: '1.04%', basis: Math.min(gross, 4005) },
       ];
     }
-    if (isEmployer) {
+    if (renderEmployer) {
       return [
         { key: 'accident', label: 'Accidents du travail', value: employer.accident, rate: '2.06%', basis: gross },
         { key: 'retraite', label: 'Retraite compl. IRCEM', value: employer.retraite, rate: 'Progressif', basis: gross },
@@ -127,7 +189,7 @@ export default function Home() {
       ];
     }
     return [];
-  }, [isEmployee, isEmployer, employee, employer, csgBasis, gross]);
+  }, [renderEmployee, renderEmployer, employee, employer, csgBasis, gross]);
 
   // Geometry for the granular sub-node column (only used when expanded)
   const SUB_X = 930;
@@ -138,8 +200,8 @@ export default function Home() {
   const SUB_MIN_H = 30;
 
   // Parent node geometry (employee = node 5, employer = node 6)
-  const parentTop = isEmployee ? (170 - H5 / 2) : (270 - H6 / 2);
-  const parentHeight = isEmployee ? Math.max(4, H5) : Math.max(4, H6);
+  const parentTop = renderEmployee ? (170 - H5 / 2) : (270 - H6 / 2);
+  const parentHeight = renderEmployee ? Math.max(4, H5) : Math.max(4, H6);
   const parentTotal = subNodes.reduce((s, i) => s + i.value, 0) || 1;
 
   // Lay out sub-nodes vertically (min height + proportional flex distribution)
@@ -221,10 +283,10 @@ export default function Home() {
   };
 
   // Renders a single granular sub-node card in the 4th column
-  const renderSubNode = (node) => {
+  const renderSubNode = (node, index = 0) => {
     const showValueLine = node.h >= 34;
     return (
-      <g key={node.key} className="sankey-subnode">
+      <g key={node.key} className="sankey-subnode" style={{ '--i': index }}>
         <title>{`${node.label} — ${node.value.toFixed(2)} € (${(node.value / nbHr).toFixed(2)} €/h) · Taux ${node.rate}`}</title>
         <rect
           className="sankey-subnode-rect"
@@ -573,7 +635,7 @@ export default function Home() {
               )}
             </div>
 
-            <svg viewBox={expanded ? '0 0 1140 560' : '0 0 800 340'} className="sankey-svg" aria-hidden="true">
+            <svg viewBox={viewBox.join(' ')} className="sankey-svg" aria-hidden="true">
               <defs>
                 {/* Static flow gradients */}
                 <linearGradient id="grad-reste-to-brut" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -715,26 +777,30 @@ export default function Home() {
               )}
 
               {/* Granular drill-down flows: parent charge node -> 4th column sub-nodes */}
-              {expanded && subLayout.map((node, i) => (
-                <g key={`subflow-${node.key}`}>
-                  <path
-                    d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
-                    stroke={subAccent}
-                    strokeOpacity="0.16"
-                    strokeWidth={Math.max(1.5, Math.min(node.h, (node.value / parentTotal) * parentHeight) || 1.5)}
-                    fill="none"
-                  />
-                  <path
-                    d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
-                    stroke={subAccent}
-                    strokeOpacity="0.65"
-                    strokeWidth={Math.min(2.5, Math.max(1, node.h * 0.18))}
-                    fill="none"
-                    strokeDasharray="7, 11"
-                    className="flowing-dash"
-                  />
+              {renderNode && (
+                <g className={`sankey-drill ${drillClass}`}>
+                  {subLayout.map((node, i) => (
+                    <g key={`subflow-${node.key}`}>
+                      <path
+                        d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
+                        stroke={subAccent}
+                        strokeOpacity="0.16"
+                        strokeWidth={Math.max(1.5, Math.min(node.h, (node.value / parentTotal) * parentHeight) || 1.5)}
+                        fill="none"
+                      />
+                      <path
+                        d={getSankeyPath(760, subSourceCys[i], SUB_X, node.cy)}
+                        stroke={subAccent}
+                        strokeOpacity="0.65"
+                        strokeWidth={Math.min(2.5, Math.max(1, node.h * 0.18))}
+                        fill="none"
+                        strokeDasharray="7, 11"
+                        className="flowing-dash"
+                      />
+                    </g>
+                  ))}
                 </g>
-              ))}
+              )}
 
               {/* NODES */}
               {/* Node 1: Reste-à-charge */}
@@ -880,19 +946,19 @@ export default function Home() {
               </g>
 
               {/* 4th column: granular sub-node breakdown */}
-              {expanded && (
-                <g className="sankey-subnode-col">
+              {renderNode && (
+                <g className={`sankey-subnode-col ${drillClass}`}>
                   <text className="sankey-subnode-col-title" x={SUB_X} y={STACK_TOP - 8}>
-                    {isEmployee ? 'Détail des cotisations salarié' : 'Détail des cotisations patronales'}
+                    {renderEmployee ? 'Détail des cotisations salarié' : 'Détail des cotisations patronales'}
                   </text>
-                  {subLayout.map((node) => renderSubNode(node))}
+                  {subLayout.map((node, i) => renderSubNode(node, i))}
                 </g>
               )}
             </svg>
 
             {/* Contextual note shown when employer charges are decomposed */}
-            {isEmployer && (
-              <div className="sankey-exo-note" role="note">
+            {renderEmployer && (
+              <div className={`sankey-exo-note ${drillClass}`} role="note">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="16" x2="12" y2="12" />
